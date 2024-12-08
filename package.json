@@ -10,7 +10,11 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "discord.js": "^14.16.3"
+    "@discordjs/voice": "^0.18.0",
+    "@distube/ytdl-core": "^4.15.1",
+    "discord.js": "^14.16.3",
+    "ytdl-core": "^4.11.5",
+    "ytsr": "^3.8.4"
   },
   "devDependencies": {
     "eslint": "^9.16.0"
