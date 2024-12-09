@@ -8,7 +8,7 @@ module.exports = {
         .setDescription('Toggles loop for the current song.'),
     async execute(interaction) {
         const guildId = interaction.guild.id;
-        const currentState = interaction.client.looping.get(guildId) || false;  // Check if loop is enabled
+        const currentState = interaction.client.looping.get(guildId) || false;
 
         interaction.client.looping.set(guildId, !currentState);
 

@@ -54,11 +54,11 @@ module.exports = {
 
 async function playNextSong(connection, interaction, guildId) {
     if (!interaction.client.looping.has(guildId)) {
-        interaction.client.looping.set(guildId, false);  // Set default loop state as false
+        interaction.client.looping.set(guildId, false);
     }
 
     const queue = interaction.client.queues.get(guildId);
-    const loopEnabled = interaction.client.looping.get(guildId); // Check if loop is enabled
+    const loopEnabled = interaction.client.looping.get(guildId);
 
     if (!queue || queue.length === 0) {
         connection.destroy();
@@ -76,7 +76,6 @@ async function playNextSong(connection, interaction, guildId) {
 
     player.on(AudioPlayerStatus.Idle, () => {
         queue.shift();
-        // If loop is enabled, push the song back to the queue
         if (loopEnabled) {
             queue.push(url);
         }

@@ -22,7 +22,7 @@ module.exports = {
             return interaction.reply('There is no song to skip!');
         }
 
-        queue.shift(); // Remove the current song
+        queue.shift();
         interaction.client.queues.set(guildId, queue);
 
         interaction.reply('Skipped the current song!');
