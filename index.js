@@ -11,6 +11,7 @@ const foldersPath = path.join(__dirname, 'commands');
 const commandFolders = fs.readdirSync(foldersPath);
 const queues = new Map();
 client.queues = queues;
+client.looping = client.looping || new Map();
 
 for (const folder of commandFolders) {
 	const commandsPath = path.join(foldersPath, folder);

@@ -1,7 +1,7 @@
 const { SlashCommandBuilder } = require('discord.js');
 const { joinVoiceChannel, createAudioPlayer, createAudioResource, getVoiceConnection, AudioPlayerStatus } = require('@discordjs/voice');
 const ytdl = require('@distube/ytdl-core');
-const ytsr = require('ytsr');
+const ytSearch = require('yt-search');
 
 module.exports = {
     cooldown: 5,
@@ -10,11 +10,18 @@ module.exports = {
         .setName('play')
         .setDescription('Plays a song from YouTube.')
         .addStringOption(option => 
-            option.setName('url')
-                .setDescription('The YouTube URL of the song to play')
+            option.setName('song')
+                .setDescription('The YouTube song to play')
                 .setRequired(true)),
     async execute(interaction) {
-        const url = interaction.options.getString('url');
+        const songName = interaction.options.getString('song');
+        const url = await searchSong(songName);
+        if (!url) {
+            return interaction.reply({
+                content: 'Could not find the song. Please try again!',
+                ephemeral: true,
+            });
+        }
         const guildId = interaction.guild.id;
 
         const voiceChannel = interaction.member.voice.channel;
@@ -28,21 +35,30 @@ module.exports = {
             adapterCreator: interaction.guild.voiceAdapterCreator,
         });
 
+        if (!interaction.client.queues) interaction.client.queues = new Map();
         const queue = interaction.client.queues.get(guildId) || [];
-        queue.push(url); // Add song to queue
+
+        const isPlaying = queue.length > 0;
+        queue.push(url);
         interaction.client.queues.set(guildId, queue);
 
-        interaction.reply(`Added to queue: ${url}`);
-
-        if (queue.length === 1) {
-            playNextSong(connection, interaction, guildId);
+        if (isPlaying) {
+            return interaction.reply(`Added to queue: ${url}`);
         }
+
+        playNextSong(connection, interaction, guildId);
+        return interaction.reply(`Now playing: ${url}`);
     },
 };
 
 
 async function playNextSong(connection, interaction, guildId) {
+    if (!interaction.client.looping.has(guildId)) {
+        interaction.client.looping.set(guildId, false);  // Set default loop state as false
+    }
+
     const queue = interaction.client.queues.get(guildId);
+    const loopEnabled = interaction.client.looping.get(guildId); // Check if loop is enabled
 
     if (!queue || queue.length === 0) {
         connection.destroy();
@@ -60,6 +76,10 @@ async function playNextSong(connection, interaction, guildId) {
 
     player.on(AudioPlayerStatus.Idle, () => {
         queue.shift();
+        // If loop is enabled, push the song back to the queue
+        if (loopEnabled) {
+            queue.push(url);
+        }
         playNextSong(connection, interaction, guildId);
     });
 
@@ -68,22 +88,25 @@ async function playNextSong(connection, interaction, guildId) {
         queue.shift();
         playNextSong(connection, interaction, guildId);
     });
-
-    interaction.channel.send(`Now playing: ${url}`);
 }
+
 
 async function searchSong(query) {
     try {
-        // Perform a YouTube search using the query
-        const searchResults = await ytsr(query, { limit: 1 }); // Search for the query, limit to 1 result
-        if (searchResults.items.length === 0) {
-            throw new Error('No results found');
+        const searchResults = await ytSearch(query);
+        const videoResult = searchResults.videos[0];
+
+        if (!videoResult) {
+            throw new Error('No video results found.');
         }
 
-        const video = searchResults.items[0]; // Get the first result
-        return video.url; // Return the URL of the first video
+        return videoResult.url;
     } catch (error) {
-        console.error('Error searching for song:', error);
-        return null;  // Return null if no song is found or an error occurs
+        if (error.message.includes('type shortsLockupViewModel is not known')) {
+            console.warn('Warning: Skipping unknown Shorts type.');
+        } else {
+            console.error('Error searching for song:', error);
+        }
+        return null;
     }
 }

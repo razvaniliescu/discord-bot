@@ -31,7 +31,12 @@ module.exports = {
 };
 
 async function playNextSong(connection, interaction, guildId) {
+    if (!interaction.client.looping.has(guildId)) {
+        interaction.client.looping.set(guildId, false);
+    }
+
     const queue = interaction.client.queues.get(guildId);
+    const loopEnabled = interaction.client.looping.get(guildId);
 
     if (!queue || queue.length === 0) {
         connection.destroy();
@@ -49,6 +54,9 @@ async function playNextSong(connection, interaction, guildId) {
 
     player.on(AudioPlayerStatus.Idle, () => {
         queue.shift();
+        if (loopEnabled) {
+            queue.push(url);
+        }
         playNextSong(connection, interaction, guildId);
     });
 

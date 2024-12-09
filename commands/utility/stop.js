@@ -17,7 +17,14 @@ module.exports = {
             });
         }
 
+        const guildId = interaction.guild.id;
+        if (interaction.client.queues && interaction.client.queues.has(guildId)) {
+            interaction.client.queues.delete(guildId);
+        }
+
         connection.destroy();
+
+        interaction.client.looping.set(guildId, false);
 
         await interaction.reply({
             content: 'Stopped the music and left the voice channel!',
