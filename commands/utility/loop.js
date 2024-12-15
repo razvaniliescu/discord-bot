@@ -8,14 +8,24 @@ module.exports = {
         .setDescription('Toggles loop for the current song.'),
     async execute(interaction) {
         const guildId = interaction.guild.id;
+
+        if (!interaction.client.looping) {
+            interaction.client.looping = new Map();
+        }
+
         const currentState = interaction.client.looping.get(guildId) || false;
+        const newState = !currentState;
 
-        interaction.client.looping.set(guildId, !currentState);
+        interaction.client.looping.set(guildId, newState);
 
-        const newState = !currentState ? 'enabled' : 'disabled';
+        const queue = interaction.client.queues.get(guildId);
+        if (newState && queue && queue.length > 0) {
+            const currentSong = queue[0];
+            queue.unshift(currentSong);
+        }
 
         await interaction.reply({
-            content: `Looping has been ${newState} for the current song.`,
+            content: `Looping has been ${newState ? 'enabled' : 'disabled'} for the current song.`,
             ephemeral: true,
         });
     },

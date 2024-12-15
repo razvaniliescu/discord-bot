@@ -2,6 +2,8 @@ const { SlashCommandBuilder } = require('discord.js');
 const { joinVoiceChannel, createAudioPlayer, createAudioResource, getVoiceConnection, AudioPlayerStatus } = require('@discordjs/voice');
 const ytdl = require('@distube/ytdl-core');
 const ytSearch = require('yt-search');
+const { getData, getPreview } = require('spotify-url-info');
+const scdl = require('soundcloud-downloader').default;
 
 module.exports = {
     cooldown: 5,
@@ -13,43 +15,75 @@ module.exports = {
             option.setName('song')
                 .setDescription('The YouTube song to play')
                 .setRequired(true)),
-    async execute(interaction) {
-        const songName = interaction.options.getString('song');
-        const url = await searchSong(songName);
-        if (!url) {
-            return interaction.reply({
-                content: 'Could not find the song. Please try again!',
-                ephemeral: true,
-            });
-        }
-        const guildId = interaction.guild.id;
-
-        const voiceChannel = interaction.member.voice.channel;
-        if (!voiceChannel) {
-            return interaction.reply('You need to be in a voice channel to play music!');
-        }
-
-        const connection = getVoiceConnection(guildId) || joinVoiceChannel({
-            channelId: voiceChannel.id,
-            guildId: guildId,
-            adapterCreator: interaction.guild.voiceAdapterCreator,
-        });
-
-        if (!interaction.client.queues) interaction.client.queues = new Map();
-        const queue = interaction.client.queues.get(guildId) || [];
-
-        const isPlaying = queue.length > 0;
-        queue.push(url);
-        interaction.client.queues.set(guildId, queue);
-
-        if (isPlaying) {
-            return interaction.reply(`Added to queue: ${url}`);
-        }
-
-        playNextSong(connection, interaction, guildId);
-        return interaction.reply(`Now playing: ${url}`);
-    },
-};
+        async execute(interaction) {
+            const songInput = interaction.options.getString('song');
+            let url;
+    
+            const youtubeUrlRegex = /^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.be)\/.+$/;
+            const spotifyUrlRegex = /^(https?:\/\/)?(open\.)?spotify\.com\/.+$/;
+            const soundcloudUrlRegex = /^(https?:\/\/)?(www\.)?soundcloud\.com\/.+$/;
+    
+            try {
+                if (youtubeUrlRegex.test(songInput)) {
+                    url = songInput;
+                } else if (spotifyUrlRegex.test(songInput)) {
+                    const spotifyInfo = await getPreview(songInput);
+                    if (!spotifyInfo || !spotifyInfo.title) {
+                        throw new Error('Spotify track not found.');
+                    }
+                    url = await searchSong(`${spotifyInfo.title} ${spotifyInfo.artist}`);
+                } else if (soundcloudUrlRegex.test(songInput)) {
+                    const soundcloudInfo = await scdl.getInfo(songInput);
+                    if (!soundcloudInfo) {
+                        throw new Error('SoundCloud track not found.');
+                    }
+                    url = songInput;
+                } else {
+                    url = await searchSong(songInput);
+                }
+    
+                if (!url) {
+                    return interaction.reply({
+                        content: 'Could not find the song. Please try again!',
+                        ephemeral: true,
+                    });
+                }
+    
+                const guildId = interaction.guild.id;
+                const voiceChannel = interaction.member.voice.channel;
+    
+                if (!voiceChannel) {
+                    return interaction.reply('You need to be in a voice channel to play music!');
+                }
+    
+                const connection = getVoiceConnection(guildId) || joinVoiceChannel({
+                    channelId: voiceChannel.id,
+                    guildId: guildId,
+                    adapterCreator: interaction.guild.voiceAdapterCreator,
+                });
+    
+                if (!interaction.client.queues) interaction.client.queues = new Map();
+                const queue = interaction.client.queues.get(guildId) || [];
+    
+                const isPlaying = queue.length > 0;
+                queue.push(url);
+                interaction.client.queues.set(guildId, queue);
+    
+                if (isPlaying) {
+                    return interaction.reply(`Added to queue: ${url}`);
+                }
+    
+                playNextSong(connection, interaction, guildId);
+                return interaction.reply(`Now playing: ${url}`);
+            } catch (error) {
+                console.error(`Error handling play command: ${error.message}`);
+                return interaction.reply({
+                    content: 'An error occurred while processing your request. Please try again.',
+                    ephemeral: true,
+                });
+            }
+        },
+    };
 
 
 async function playNextSong(connection, interaction, guildId) {
@@ -67,26 +101,40 @@ async function playNextSong(connection, interaction, guildId) {
     }
 
     const url = queue[0];
-    const stream = ytdl(url, { filter: 'audioonly' });
-    const resource = createAudioResource(stream);
-    const player = createAudioPlayer();
+    let resource;
 
-    connection.subscribe(player);
-    player.play(resource);
-
-    player.on(AudioPlayerStatus.Idle, () => {
-        queue.shift();
-        if (loopEnabled) {
-            queue.push(url);
+    try {
+        if (url.includes('soundcloud.com')) {
+            const stream = await scdl.download(url);
+            resource = createAudioResource(stream);
+        } else {
+            const stream = ytdl(url, { filter: 'audioonly' });
+            resource = createAudioResource(stream);
         }
-        playNextSong(connection, interaction, guildId);
-    });
 
-    player.on('error', error => {
-        console.error(`Error in audio player: ${error.message}`);
+        const player = createAudioPlayer();
+        connection.subscribe(player);
+        player.play(resource);
+
+        player.on(AudioPlayerStatus.Idle, () => {
+            if (loopEnabled) {
+                queue.unshift(queue.shift());
+            } else {
+                queue.shift();
+            }
+            playNextSong(connection, interaction, guildId);
+        });
+
+        player.on('error', error => {
+            console.error(`Error in audio player: ${error.message}`);
+            queue.shift();
+            playNextSong(connection, interaction, guildId);
+        });
+    } catch (error) {
+        console.error(`Error playing song: ${error.message}`);
         queue.shift();
         playNextSong(connection, interaction, guildId);
-    });
+    }
 }
 
 

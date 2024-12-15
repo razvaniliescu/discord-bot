@@ -53,9 +53,10 @@ async function playNextSong(connection, interaction, guildId) {
     player.play(resource);
 
     player.on(AudioPlayerStatus.Idle, () => {
-        queue.shift();
         if (loopEnabled) {
-            queue.push(url);
+            queue.unshift(queue.shift());
+        } else {
+            queue.shift();
         }
         playNextSong(connection, interaction, guildId);
     });
